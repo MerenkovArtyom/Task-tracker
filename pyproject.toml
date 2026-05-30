@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "todo-tracker"
+version = "0.1.0"
+description = "Menu bar notes tracker for macOS."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "rumps>=0.4.0,<0.5.0",
+  "sqlalchemy>=2.0.0,<3.0.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0.0,<9.0.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/todo_tracker"]
