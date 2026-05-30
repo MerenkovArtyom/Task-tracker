@@ -34,6 +34,11 @@ class Note(Base):
     )
     priority: Mapped[int] = mapped_column(Integer, nullable=False)
     due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+    )
 
     @validates("status")
     def validate_status(self, _: str, value: NoteStatus | str) -> NoteStatus:

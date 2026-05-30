@@ -20,7 +20,15 @@ def test_schema_creates_notes_table() -> None:
 
     inspector = inspect(engine)
     columns = {column["name"] for column in inspector.get_columns("notes")}
-    assert columns == {"id", "title", "content", "status", "priority", "due_date"}
+    assert columns == {
+        "id",
+        "title",
+        "content",
+        "status",
+        "priority",
+        "due_date",
+        "created_at",
+    }
 
 
 def test_note_persists_due_date_and_status() -> None:
@@ -43,6 +51,7 @@ def test_note_persists_due_date_and_status() -> None:
         assert note.id is not None
         assert note.status == NoteStatus.IN_PROGRESS
         assert note.due_date == due_date
+        assert note.created_at is not None
 
 
 def test_note_allows_null_due_date() -> None:
