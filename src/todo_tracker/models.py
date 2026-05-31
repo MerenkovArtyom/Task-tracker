@@ -15,6 +15,12 @@ class NoteStatus(str, Enum):
     ARCHIVED = "archived"
 
 
+class NotePriority(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
 class Note(Base):
     __tablename__ = "notes"
 
@@ -32,7 +38,17 @@ class Note(Base):
         ),
         nullable=False,
     )
-    priority: Mapped[int] = mapped_column(Integer, nullable=False)
+    priority: Mapped[NotePriority] = mapped_column(
+        SqlEnum(
+            NotePriority,
+            name="note_priority",
+            native_enum=False,
+            validate_strings=True,
+            create_constraint=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=False,
+    )
     due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -45,3 +61,9 @@ class Note(Base):
         if isinstance(value, NoteStatus):
             return value
         return NoteStatus(value)
+
+    @validates("priority")
+    def validate_priority(self, _: str, value: NotePriority | str) -> NotePriority:
+        if isinstance(value, NotePriority):
+            return value
+        return NotePriority(value)

@@ -6,7 +6,7 @@ from typing import Annotated
 import typer
 
 from todo_tracker.db import init_db
-from todo_tracker.models import Note
+from todo_tracker.models import Note, NotePriority
 from todo_tracker.services import UNSET, TaskNotFoundError, TaskService
 
 
@@ -19,13 +19,17 @@ def parse_due_date(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value)
 
 
+def parse_priority(value: str) -> NotePriority:
+    return NotePriority(value.lower())
+
+
 def get_service(ctx: typer.Context) -> TaskService:
     return ctx.obj["service"]
 
 
 def format_note(index: int, note: Note) -> str:
     due = f" due={note.due_date.isoformat(sep=' ', timespec='minutes')}" if note.due_date else ""
-    return f"{index}. [{note.status.value}] {note.title} (priority={note.priority}){due}"
+    return f"{index}. [{note.status.value}] {note.title} (priority={note.priority.value}){due}"
 
 
 @app.callback()
@@ -42,14 +46,14 @@ def add(
     ctx: typer.Context,
     title: Annotated[str, typer.Option("--title")],
     content: Annotated[str, typer.Option("--content")],
-    priority: Annotated[int, typer.Option("--priority")],
+    priority: Annotated[str, typer.Option("--priority")],
     due_date: Annotated[str | None, typer.Option("--due-date")] = None,
 ) -> None:
     service = get_service(ctx)
     note = service.create_note(
         title=title,
         content=content,
-        priority=priority,
+        priority=parse_priority(priority),
         due_date=parse_due_date(due_date),
     )
     typer.echo(f"Created task {note.id}: {note.title}")
@@ -73,7 +77,7 @@ def update(
     number: int,
     title: Annotated[str | None, typer.Option("--title")] = None,
     content: Annotated[str | None, typer.Option("--content")] = None,
-    priority: Annotated[int | None, typer.Option("--priority")] = None,
+    priority: Annotated[str | None, typer.Option("--priority")] = None,
     due_date: Annotated[str | None, typer.Option("--due-date")] = None,
 ) -> None:
     service = get_service(ctx)
@@ -82,7 +86,7 @@ def update(
             number,
             title=title,
             content=content,
-            priority=priority,
+            priority=parse_priority(priority) if priority is not None else None,
             due_date=parse_due_date(due_date) if due_date is not None else UNSET,
         )
     except TaskNotFoundError as exc:

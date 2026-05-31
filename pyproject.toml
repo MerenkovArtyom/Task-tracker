@@ -16,11 +16,13 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+  "py2app>=0.28.10",
   "pytest>=8.0.0,<9.0.0",
 ]
 
 [project.scripts]
 todo-tracker = "todo_tracker.cli:app"
+todo-tracker-menubar = "todo_tracker.menubar:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/todo_tracker"]

@@ -3,3 +3,6 @@
 .venv/
 __pycache__/
 *.py[cod]
+dist/
+app_bundle/build/
+app_bundle/dist/

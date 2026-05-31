@@ -22,7 +22,7 @@ def test_cli_add_and_list_active_tasks(tmp_path: Path) -> None:
             "--content",
             "2 bottles",
             "--priority",
-            "1",
+            "low",
         ],
     )
     assert result.exit_code == 0
@@ -37,11 +37,11 @@ def test_cli_update_and_done_use_one_based_numbers(tmp_path: Path) -> None:
     db_url = f"sqlite:///{tmp_path / 'tasks.db'}"
     runner.invoke(
         app,
-        ["--db-url", db_url, "add", "--title", "First", "--content", "A", "--priority", "1"],
+        ["--db-url", db_url, "add", "--title", "First", "--content", "A", "--priority", "high"],
     )
     runner.invoke(
         app,
-        ["--db-url", db_url, "add", "--title", "Second", "--content", "B", "--priority", "2"],
+        ["--db-url", db_url, "add", "--title", "Second", "--content", "B", "--priority", "low"],
     )
 
     update_result = runner.invoke(
@@ -56,27 +56,28 @@ def test_cli_update_and_done_use_one_based_numbers(tmp_path: Path) -> None:
             "--content",
             "updated",
             "--priority",
-            "3",
+            "high",
         ],
     )
     done_result = runner.invoke(app, ["--db-url", db_url, "done", "1"])
     list_result = runner.invoke(app, ["--db-url", db_url, "list"])
 
     assert update_result.exit_code == 0
+    assert "Updated task 1: Updated first" in update_result.stdout
     assert done_result.exit_code == 0
-    assert "1. [in_progress] Updated first" in list_result.stdout
-    assert "Second" not in list_result.stdout
+    assert "1. [in_progress] Second" in list_result.stdout
+    assert "Updated first" not in list_result.stdout
 
 
 def test_cli_delete_removes_all_done_tasks(tmp_path: Path) -> None:
     db_url = f"sqlite:///{tmp_path / 'tasks.db'}"
     runner.invoke(
         app,
-        ["--db-url", db_url, "add", "--title", "Active", "--content", "A", "--priority", "1"],
+        ["--db-url", db_url, "add", "--title", "Active", "--content", "A", "--priority", "high"],
     )
     runner.invoke(
         app,
-        ["--db-url", db_url, "add", "--title", "Done", "--content", "B", "--priority", "2"],
+        ["--db-url", db_url, "add", "--title", "Done", "--content", "B", "--priority", "low"],
     )
     runner.invoke(app, ["--db-url", db_url, "done", "2"])
 
@@ -93,7 +94,7 @@ def test_cli_rejects_number_out_of_range(tmp_path: Path) -> None:
     db_url = f"sqlite:///{tmp_path / 'tasks.db'}"
     runner.invoke(
         app,
-        ["--db-url", db_url, "add", "--title", "Only", "--content", "A", "--priority", "1"],
+        ["--db-url", db_url, "add", "--title", "Only", "--content", "A", "--priority", "low"],
     )
 
     result = runner.invoke(app, ["--db-url", db_url, "done", "2"])

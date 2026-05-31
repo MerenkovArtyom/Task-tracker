@@ -1,103 +1,158 @@
 # todo-tracker
 
-Python task tracker for macOS with local `SQLite` storage, SQLAlchemy models, and a small CLI for testing the core task operations before wiring them into a menu bar UI.
+Нативный `menu bar` todo-tracker для macOS на Python. Приложение живёт в верхнем меню, хранит заметки в локальной `SQLite` базе и открывает кастомный popup со списком задач, редактированием и дедлайнами.
 
-## Stack
+## Что уже умеет
+
+- открываться из menu bar как отдельное macOS-приложение без иконки в Dock
+- показывать задачи в popup-окне фиксированной ширины и с ограничением по высоте
+- прокручивать список, если задач много
+- помечать задачу как `done` по левому переключателю
+- переносить выполненные задачи вниз списка и зачеркивать их
+- раскрывать текст заметки по стрелке рядом с заголовком
+- показывать `edit` и `delete` только при наведении на строку
+- добавлять и редактировать заметки во встроенной нижней форме
+- выбирать приоритет `low / medium / high`
+- добавлять опциональный дедлайн через нативный `date picker`
+
+## Стек
 
 - Python 3.11+
-- `uv` for dependency management
-- `SQLAlchemy` for the data model and persistence
-- `Typer` for the CLI
-- `SQLite` as the local database
+- `uv` для зависимостей и запуска
+- `rumps` + `PyObjC/AppKit` для menu bar UI
+- `SQLAlchemy` для модели данных и хранения
+- `SQLite` как локальная база
+- `Typer` для CLI-команд
+- `py2app` для сборки `.app`
 
-## Setup
-
-Install dependencies:
+## Установка зависимостей
 
 ```bash
 uv sync --dev
 ```
 
-## Run The CLI
+## Запуск из исходников
 
-By default, the app uses a local database at `~/.todo_tracker.db`.
-
-Show active tasks:
+CLI:
 
 ```bash
 uv run todo-tracker list
 ```
 
-Use a custom database path:
+Menu bar app:
 
 ```bash
-uv run todo-tracker --db-url sqlite:///tasks.db list
+PYTHONPATH=src .venv/bin/python -m todo_tracker.menubar
 ```
 
-## Commands
-
-Create a task:
+По умолчанию база лежит в:
 
 ```bash
-uv run todo-tracker add --title "Buy milk" --content "2 bottles" --priority 1
+~/.todo_tracker.db
 ```
 
-Create a task with a due date:
+## CLI-команды
+
+Добавить задачу:
 
 ```bash
-uv run todo-tracker add --title "Submit report" --content "PDF export" --priority 2 --due-date "2026-06-01T18:30:00"
+uv run todo-tracker add --title "Купить молоко" --content "2 бутылки" --priority low
 ```
 
-List active tasks:
+Добавить задачу с дедлайном:
+
+```bash
+uv run todo-tracker add --title "Отправить отчёт" --content "PDF" --priority high --due-date "2026-06-01T18:30:00"
+```
+
+Показать активные задачи:
 
 ```bash
 uv run todo-tracker list
 ```
 
-Update a task by its human-visible number from the current `list` output:
+Обновить задачу по номеру из текущего списка:
 
 ```bash
-uv run todo-tracker update 1 --title "Buy bread" --content "Rye bread" --priority 3
+uv run todo-tracker update 1 --title "Купить хлеб" --content "Ржаной" --priority medium
 ```
 
-Mark a task as done:
+Пометить задачу как выполненную:
 
 ```bash
 uv run todo-tracker done 1
 ```
 
-Delete all tasks with status `done`:
+Удалить все задачи со статусом `done`:
 
 ```bash
 uv run todo-tracker delete
 ```
 
-## CLI Rules
+## Правила модели и сортировки
 
-- Task numbering starts from `1`, not `0`.
-- `update <num>` and `done <num>` work with the current `list` output, not with database `id`.
-- `list` shows only `in_progress` tasks by default.
-- Tasks are sorted by `priority`, then `due_date`, then `created_at`.
-- `delete` removes all tasks with status `done`.
+- статусы: `in_progress`, `done`, `archived`
+- приоритеты: `high`, `medium`, `low`
+- в GUI задачи сортируются так:
+  - сначала `in_progress`
+  - потом `done`
+  - внутри группы: `high -> medium -> low`
+  - затем по дедлайну
+  - затем по времени создания
+- CLI-команды `update <num>` и `done <num>` работают по номеру из текущего вывода `list`, а не по `id` записи в базе
 
-## Statuses
+## Сборка `.app`
 
-The model supports these statuses:
+Сборка делается через `py2app`, который уже подключён как dev-зависимость.
 
-- `in_progress`
-- `done`
-- `archived`
-
-At the moment, the CLI does not have a dedicated command to display `done` or `archived` tasks. If you need to inspect them directly, you can query the SQLite database:
+Собрать приложение:
 
 ```bash
-sqlite3 ~/.todo_tracker.db "select id, title, status, priority, due_date, created_at from notes where status in ('done', 'archived') order by priority, due_date, created_at;"
+cd app_bundle
+../.venv/bin/python setup.py py2app
 ```
 
-## Tests
+После сборки bundle появится здесь:
 
-Run all tests:
+```bash
+app_bundle/dist/TodoTracker.app
+```
+
+Если нужен bundle в привычном корневом `dist/`:
+
+```bash
+mkdir -p dist
+rm -rf dist/TodoTracker.app
+cp -R app_bundle/dist/TodoTracker.app dist/TodoTracker.app
+```
+
+Готовый app для запуска и добавления в автозапуск:
+
+```bash
+dist/TodoTracker.app
+```
+
+## Автозапуск через настройки macOS
+
+1. Откройте `System Settings`
+2. Перейдите в `General`
+3. Откройте `Login Items`
+4. Нажмите `+`
+5. Выберите [TodoTracker.app](/Users/artem/Programming/todo_tracker/dist/TodoTracker.app)
+
+Если приложение уже было добавлено раньше, а вы пересобрали bundle, лучше удалить старую запись и добавить её заново.
+
+## Тесты
+
+Запуск всех тестов:
 
 ```bash
 uv run pytest -q
 ```
+
+## Файлы сборки
+
+- [src/todo_tracker/menubar.py](/Users/artem/Programming/todo_tracker/src/todo_tracker/menubar.py) — entrypoint menu bar приложения
+- [src/todo_tracker/popup.py](/Users/artem/Programming/todo_tracker/src/todo_tracker/popup.py) — popup UI и контроллер
+- [src/todo_tracker/geometry.py](/Users/artem/Programming/todo_tracker/src/todo_tracker/geometry.py) — геометрия позиционирования popup
+- [app_bundle/setup.py](/Users/artem/Programming/todo_tracker/app_bundle/setup.py) — сборка `.app` через `py2app`
