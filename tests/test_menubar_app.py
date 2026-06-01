@@ -1,11 +1,38 @@
 from pathlib import Path
+from unittest.mock import Mock
 from unittest.mock import patch
 
 from AppKit import NSBitmapImageRep
 from Foundation import NSData
 from todo_tracker.geometry import POPUP_WIDTH, compute_popup_frame, status_item_screen_frame
 from todo_tracker.menubar import resolve_status_icon_path
-from todo_tracker.popup import PopupContentView, load_button_icon, resolve_popup_asset_path
+from todo_tracker.models import Note, NotePriority, NoteStatus
+from todo_tracker.popup import (
+    NoteRowView,
+    PopupContentView,
+    PopupController,
+    load_button_icon,
+    resolve_popup_asset_path,
+)
+
+
+def build_note(note_id: int, title: str = "Test note") -> Note:
+    note = Note(
+        title=title,
+        content="Body",
+        status=NoteStatus.IN_PROGRESS,
+        priority=NotePriority.MEDIUM,
+    )
+    note.id = note_id
+    return note
+
+
+def build_row(note: Note, controller: PopupController) -> NoteRowView:
+    row_view = NoteRowView.alloc().initWithFrame_(((0, 0), (320, 44)))
+    row_view.configure(note, controller, expanded=False)
+    controller.row_views.append(row_view)
+    controller.notes.append(note)
+    return row_view
 
 
 def test_resolve_status_icon_path_points_to_assets_icon() -> None:
@@ -110,3 +137,85 @@ def test_menubar_module_has_script_entrypoint_guard() -> None:
 
     assert 'if __name__ == "__main__":' in source
     assert "main()" in source
+
+
+def test_delete_note_requires_confirmation_before_service_delete() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    controller = PopupController.alloc().initWithService_(service)
+    row_view = build_row(build_note(1), controller)
+
+    controller.deleteNote_(row_view.delete_button)
+
+    assert controller.active_confirm_note_id == 1
+    assert row_view.confirming_delete is True
+    assert row_view.delete_button.title() == "Подтвердить"
+    service.delete_note_by_id.assert_not_called()
+
+
+def test_delete_confirmation_expands_button_width_for_full_label() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    controller = PopupController.alloc().initWithService_(service)
+    row_view = build_row(build_note(1), controller)
+    row_view.layout()
+    initial_width = row_view.delete_button.frame().size.width
+
+    controller.deleteNote_(row_view.delete_button)
+
+    assert row_view.delete_button.frame().size.width > initial_width
+
+
+def test_delete_note_deletes_on_second_click_after_confirmation() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    controller = PopupController.alloc().initWithService_(service)
+    row_view = build_row(build_note(1), controller)
+
+    controller.deleteNote_(row_view.delete_button)
+    controller.deleteNote_(row_view.delete_button)
+
+    service.delete_note_by_id.assert_called_once_with(1)
+    assert controller.active_confirm_note_id is None
+
+
+def test_mouse_exit_clears_delete_confirmation() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    controller = PopupController.alloc().initWithService_(service)
+    row_view = build_row(build_note(1), controller)
+
+    controller.deleteNote_(row_view.delete_button)
+    row_view.mouseExited_(None)
+
+    assert controller.active_confirm_note_id is None
+    assert row_view.confirming_delete is False
+    assert row_view.delete_button.title() == ""
+
+
+def test_clicking_another_row_clears_delete_confirmation() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    controller = PopupController.alloc().initWithService_(service)
+    first_row = build_row(build_note(1, "First"), controller)
+    second_row = build_row(build_note(2, "Second"), controller)
+
+    controller.deleteNote_(first_row.delete_button)
+    controller.handle_row_click(2)
+
+    assert controller.active_confirm_note_id is None
+    assert first_row.confirming_delete is False
+    assert second_row.confirming_delete is False
+
+
+def test_clicking_popup_background_clears_delete_confirmation() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    controller = PopupController.alloc().initWithService_(service)
+    row_view = build_row(build_note(1), controller)
+
+    controller.deleteNote_(row_view.delete_button)
+    controller.handle_popup_background_click()
+
+    assert controller.active_confirm_note_id is None
+    assert row_view.confirming_delete is False

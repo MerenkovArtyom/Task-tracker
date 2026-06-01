@@ -58,6 +58,7 @@ ROW_HEADER_HEIGHT = 34
 ROW_BOTTOM_PADDING = 10
 ROW_CONTENT_SPACING = 6
 ROW_ACTION_WIDTH = 28
+ROW_CONFIRM_ACTION_WIDTH = 92
 ROW_CONTROL_GAP = 8
 FOOTER_HEIGHT = 52
 EDITOR_HEIGHT = 246
@@ -127,7 +128,9 @@ class NoteRowView(NSView):
         self.controller = None
         self.expanded = False
         self.hovered = False
+        self.confirming_delete = False
         self._tracking_area = None
+        self._trash_icon = load_button_icon("trash_can.png")
 
         self.setAutoresizingMask_(NSViewWidthSizable)
         self.setWantsLayer_(True)
@@ -165,7 +168,7 @@ class NoteRowView(NSView):
         self.delete_button = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, ROW_ACTION_WIDTH, 24))
         self.delete_button.setBordered_(False)
         self.delete_button.setHidden_(True)
-        self.delete_button.setImage_(load_button_icon("trash_can.png"))
+        self.delete_button.setImage_(self._trash_icon)
         self.delete_button.setImagePosition_(NSImageOnly)
         self.delete_button.setImageScaling_(NSImageScaleProportionallyDown)
         if hasattr(self.delete_button, "setContentTintColor_"):
@@ -211,6 +214,25 @@ class NoteRowView(NSView):
         self.content_field.setStringValue_(note.content or "")
         self.content_field.setHidden_(not expanded)
         self._update_title()
+        self.set_delete_confirmation(note_id == getattr(controller, "active_confirm_note_id", None))
+        self._update_hover()
+        self.needsLayout = True
+
+    @objc.python_method
+    def note_id(self) -> int | None:
+        if self.note is None or self.note.id is None:
+            return None
+        return int(self.note.id)
+
+    @objc.python_method
+    def set_delete_confirmation(self, confirming: bool) -> None:
+        self.confirming_delete = confirming
+        self.delete_button.setTitle_("Подтвердить" if confirming else "")
+        self.delete_button.setBordered_(confirming)
+        self.delete_button.setImage_(None if confirming else self._trash_icon)
+        self.delete_button.setImagePosition_(0 if confirming else NSImageOnly)
+        if confirming:
+            self.delete_button.setFont_(NSFont.systemFontOfSize_(11))
         self._update_hover()
         self.needsLayout = True
 
@@ -262,13 +284,22 @@ class NoteRowView(NSView):
         self._update_hover()
 
     def mouseExited_(self, _event):
+        if self.controller is not None and self.confirming_delete:
+            self.controller.clear_delete_confirmation()
         self.hovered = False
         self._update_hover()
+
+    def mouseDown_(self, event):
+        if self.controller is not None:
+            note_id = self.note_id()
+            if note_id is not None:
+                self.controller.handle_row_click(note_id)
+        objc.super(NoteRowView, self).mouseDown_(event)
 
     @objc.python_method
     def _update_hover(self) -> None:
         hidden = not self.hovered
-        self.edit_button.setHidden_(hidden)
+        self.edit_button.setHidden_(hidden or self.confirming_delete)
         self.delete_button.setHidden_(hidden)
         background = (
             NSColor.controlAccentColor().colorWithAlphaComponent_(0.08)
@@ -292,12 +323,14 @@ class NoteRowView(NSView):
         self.expand_button.setFrame_(NSMakeRect(x, top + 6, 20, 20))
         x += 20 + ROW_CONTROL_GAP
 
-        action_x = width - ROW_HORIZONTAL_PADDING - ROW_ACTION_WIDTH
-        self.delete_button.setFrame_(NSMakeRect(action_x, top + 6, ROW_ACTION_WIDTH, 20))
+        delete_width = ROW_CONFIRM_ACTION_WIDTH if self.confirming_delete else ROW_ACTION_WIDTH
+        action_x = width - ROW_HORIZONTAL_PADDING - delete_width
+        self.delete_button.setFrame_(NSMakeRect(action_x, top + 6, delete_width, 20))
         self.edit_button.setFrame_(NSMakeRect(action_x - ROW_ACTION_WIDTH - 4, top + 6, ROW_ACTION_WIDTH, 20))
 
         priority_width = 60
-        title_width = max(120, self.edit_button.frame().origin.x - x - priority_width - 8)
+        title_right_edge = self.delete_button.frame().origin.x if self.confirming_delete else self.edit_button.frame().origin.x
+        title_width = max(120, title_right_edge - x - priority_width - 8)
         self.title_field.setFrame_(NSMakeRect(x, top + 8, title_width, 18))
         self.priority_field.setFrame_(NSMakeRect(x + title_width + 8, top + 8, priority_width, 18))
 
@@ -457,10 +490,51 @@ class NoteEditorView(NSView):
         self.cancel_button.setFrame_(NSMakeRect(width - 196, 12, 88, 30))
         self.save_button.setFrame_(NSMakeRect(width - 100, 12, 88, 30))
 
+    def mouseDown_(self, event):
+        if self.controller is not None:
+            self.controller.handle_popup_background_click()
+        objc.super(NoteEditorView, self).mouseDown_(event)
+
 
 class PopupContentView(NSView):
+    def initWithFrame_(self, frame):
+        self = objc.super(PopupContentView, self).initWithFrame_(frame)
+        if self is None:
+            return None
+
+        self.controller = None
+        return self
+
+    @objc.python_method
+    def set_controller(self, controller: "PopupController") -> None:
+        self.controller = controller
+
     def isFlipped(self):
         return True
+
+    def mouseDown_(self, event):
+        if self.controller is not None:
+            self.controller.handle_popup_background_click()
+        objc.super(PopupContentView, self).mouseDown_(event)
+
+
+class PopupRootView(NSView):
+    def initWithFrame_(self, frame):
+        self = objc.super(PopupRootView, self).initWithFrame_(frame)
+        if self is None:
+            return None
+
+        self.controller = None
+        return self
+
+    @objc.python_method
+    def set_controller(self, controller: "PopupController") -> None:
+        self.controller = controller
+
+    def mouseDown_(self, event):
+        if self.controller is not None:
+            self.controller.handle_popup_background_click()
+        objc.super(PopupRootView, self).mouseDown_(event)
 
 
 class PopupController(NSObject):
@@ -480,6 +554,7 @@ class PopupController(NSObject):
         self.notes = []
         self.expanded_note_ids = set()
         self.row_views = []
+        self.active_confirm_note_id = None
         self.last_error = None
         return self
 
@@ -505,7 +580,8 @@ class PopupController(NSObject):
         panel.setOpaque_(False)
         panel.setBackgroundColor_(NSColor.windowBackgroundColor())
 
-        root = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 560, MIN_PANEL_HEIGHT))
+        root = PopupRootView.alloc().initWithFrame_(NSMakeRect(0, 0, 560, MIN_PANEL_HEIGHT))
+        root.set_controller(self)
         root.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
         root.setWantsLayer_(True)
         root.layer().setCornerRadius_(LARGE_CORNER_RADIUS)
@@ -517,6 +593,7 @@ class PopupController(NSObject):
         scroll.setHasVerticalScroller_(True)
         scroll.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
         doc = PopupContentView.alloc().initWithFrame_(NSMakeRect(0, 0, 560, 100))
+        doc.set_controller(self)
         doc.setAutoresizingMask_(NSViewWidthSizable)
         scroll.setDocumentView_(doc)
         root.addSubview_(scroll)
@@ -616,8 +693,54 @@ class PopupController(NSObject):
         self.document_view.setFrame_(NSMakeRect(0, 0, width, max(y, 1)))
 
     @objc.python_method
+    def _row_view_by_note_id(self, note_id: int) -> NoteRowView | None:
+        for row_view in self.row_views:
+            if row_view.note_id() == int(note_id):
+                return row_view
+        return None
+
+    @objc.python_method
+    def clear_delete_confirmation(self) -> None:
+        if self.active_confirm_note_id is None:
+            return
+
+        row_view = self._row_view_by_note_id(self.active_confirm_note_id)
+        self.active_confirm_note_id = None
+        if row_view is not None:
+            row_view.set_delete_confirmation(False)
+            row_view.layout()
+        if self.panel is not None:
+            self.layoutContentViews()
+
+    @objc.python_method
+    def handle_row_click(self, note_id: int) -> None:
+        if self.active_confirm_note_id is not None and self.active_confirm_note_id != int(note_id):
+            self.clear_delete_confirmation()
+
+    @objc.python_method
+    def handle_popup_background_click(self) -> None:
+        self.clear_delete_confirmation()
+
+    @objc.python_method
+    def _show_delete_confirmation(self, note_id: int) -> None:
+        if self.active_confirm_note_id == int(note_id):
+            return
+
+        self.clear_delete_confirmation()
+        self.active_confirm_note_id = int(note_id)
+        row_view = self._row_view_by_note_id(note_id)
+        if row_view is not None:
+            row_view.set_delete_confirmation(True)
+            row_view.layout()
+        if self.panel is not None:
+            self.layoutContentViews()
+
+    @objc.python_method
     def reload_notes(self) -> None:
         self.notes = self.service.list_notes_for_gui()
+        if self.document_view is None:
+            self.row_views = []
+            return
         for subview in list(self.document_view.subviews()):
             subview.removeFromSuperview()
         self.row_views = []
@@ -640,11 +763,13 @@ class PopupController(NSObject):
         return None
 
     def addNote_(self, _sender):
+        self.handle_popup_background_click()
         self.editor_view.show_for_create()
         self.layoutContentViews()
 
     def toggleExpanded_(self, sender):
         note_id = int(sender.tag())
+        self.handle_row_click(note_id)
         if note_id in self.expanded_note_ids:
             self.expanded_note_ids.remove(note_id)
         else:
@@ -654,6 +779,7 @@ class PopupController(NSObject):
 
     def toggleDone_(self, sender):
         note_id = int(sender.tag())
+        self.handle_row_click(note_id)
         try:
             self.service.mark_done_by_id(note_id)
         except TaskNotFoundError as exc:
@@ -662,7 +788,9 @@ class PopupController(NSObject):
         self.layoutContentViews()
 
     def editNote_(self, sender):
-        note = self._note_by_id(int(sender.tag()))
+        note_id = int(sender.tag())
+        self.handle_row_click(note_id)
+        note = self._note_by_id(note_id)
         if note is None:
             return
         self.editor_view.show_for_edit(note)
@@ -670,6 +798,11 @@ class PopupController(NSObject):
 
     def deleteNote_(self, sender):
         note_id = int(sender.tag())
+        if self.active_confirm_note_id != note_id:
+            self._show_delete_confirmation(note_id)
+            return
+
+        self.clear_delete_confirmation()
         try:
             self.service.delete_note_by_id(note_id)
         except TaskNotFoundError as exc:
