@@ -12,7 +12,11 @@ if not hasattr(zlib, "__file__"):
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = [str(ROOT / "src" / "todo_tracker" / "menubar.py")]
-DATA_FILES = [str(ROOT / "assets" / "icon.png")]
+DATA_FILES = [
+    str(ROOT / "assets" / "icon.png"),
+    str(ROOT / "assets" / "pencil.png"),
+    str(ROOT / "assets" / "trash_can.png"),
+]
 OPTIONS = {
     "argv_emulation": False,
     "iconfile": str(ROOT / "assets" / "icon.png"),

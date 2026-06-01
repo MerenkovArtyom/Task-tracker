@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
+from pathlib import Path
+import sys
 
 import objc
 from AppKit import (
@@ -19,6 +21,9 @@ from AppKit import (
     NSFont,
     NSFontAttributeName,
     NSForegroundColorAttributeName,
+    NSImage,
+    NSImageOnly,
+    NSImageScaleProportionallyDown,
     NSMakeRect,
     NSMakeSize,
     NSPanel,
@@ -57,6 +62,29 @@ ROW_CONTROL_GAP = 8
 FOOTER_HEIGHT = 52
 EDITOR_HEIGHT = 246
 MIN_PANEL_HEIGHT = 180
+LARGE_CORNER_RADIUS = 18.0
+MEDIUM_CORNER_RADIUS = 14.0
+ACTION_ICON_SIZE = 16.0
+
+
+def resolve_popup_asset_path(name: str) -> Path:
+    bundled_asset = Path(__file__).resolve().with_name(name)
+    if bundled_asset.exists():
+        return bundled_asset
+
+    if getattr(sys, "frozen", None) == "macosx_app":
+        resource_path = Path.cwd() / name
+        if resource_path.exists():
+            return resource_path
+
+    return Path(__file__).resolve().parents[2] / "assets" / name
+
+
+def load_button_icon(name: str) -> NSImage:
+    image = NSImage.alloc().initWithContentsOfFile_(str(resolve_popup_asset_path(name)))
+    image.setTemplate_(True)
+    image.setSize_(NSMakeSize(ACTION_ICON_SIZE, ACTION_ICON_SIZE))
+    return image
 
 
 def datetime_to_nsdate(value: datetime) -> NSDate:
@@ -103,7 +131,7 @@ class NoteRowView(NSView):
 
         self.setAutoresizingMask_(NSViewWidthSizable)
         self.setWantsLayer_(True)
-        self.layer().setCornerRadius_(10.0)
+        self.layer().setCornerRadius_(MEDIUM_CORNER_RADIUS)
 
         self.done_button = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 24, 24))
         self.done_button.setBordered_(False)
@@ -125,15 +153,23 @@ class NoteRowView(NSView):
         self.addSubview_(self.priority_field)
 
         self.edit_button = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, ROW_ACTION_WIDTH, 24))
-        self.edit_button.setTitle_("✎")
         self.edit_button.setBordered_(False)
         self.edit_button.setHidden_(True)
+        self.edit_button.setImage_(load_button_icon("pencil.png"))
+        self.edit_button.setImagePosition_(NSImageOnly)
+        self.edit_button.setImageScaling_(NSImageScaleProportionallyDown)
+        if hasattr(self.edit_button, "setContentTintColor_"):
+            self.edit_button.setContentTintColor_(NSColor.labelColor())
         self.addSubview_(self.edit_button)
 
         self.delete_button = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, ROW_ACTION_WIDTH, 24))
-        self.delete_button.setTitle_("🗑")
         self.delete_button.setBordered_(False)
         self.delete_button.setHidden_(True)
+        self.delete_button.setImage_(load_button_icon("trash_can.png"))
+        self.delete_button.setImagePosition_(NSImageOnly)
+        self.delete_button.setImageScaling_(NSImageScaleProportionallyDown)
+        if hasattr(self.delete_button, "setContentTintColor_"):
+            self.delete_button.setContentTintColor_(NSColor.labelColor())
         self.addSubview_(self.delete_button)
 
         self.content_field = NSTextField.labelWithString_("")
@@ -283,13 +319,16 @@ class NoteEditorView(NSView):
 
         self.setAutoresizingMask_(NSViewWidthSizable)
         self.setHidden_(True)
+        self.setWantsLayer_(True)
+        self.layer().setCornerRadius_(LARGE_CORNER_RADIUS)
+        self.layer().setBackgroundColor_(NSColor.windowBackgroundColor().colorWithAlphaComponent_(0.96).CGColor())
 
         self.separator = NSBox.alloc().initWithFrame_(NSMakeRect(0, 0, 100, 1))
         self.separator.setBoxType_(2)
         self.addSubview_(self.separator)
 
         self.title_field = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 100, 28))
-        self.title_field.setPlaceholderString_("Title")
+        self.title_field.setPlaceholderString_("Заголовок")
         self.addSubview_(self.title_field)
 
         self.priority_popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(NSMakeRect(0, 0, 120, 28), False)
@@ -315,7 +354,7 @@ class NoteEditorView(NSView):
         self.addSubview_(self.text_scroll)
 
         self.cancel_button = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 88, 30))
-        self.cancel_button.setTitle_("Cancel")
+        self.cancel_button.setTitle_("Отмена")
         self.cancel_button.setBezelStyle_(NSRoundedBezelStyle)
         self.cancel_button.setTarget_(self)
         self.cancel_button.setAction_("cancel:")
@@ -343,7 +382,7 @@ class NoteEditorView(NSView):
         self.deadline_enabled = False
         self.date_picker.setDateValue_(NSDate.date())
         self._update_deadline_controls()
-        self.save_button.setTitle_("Add note")
+        self.save_button.setTitle_("Сохранить")
         self.setHidden_(False)
         self.needsLayout = True
 
@@ -359,7 +398,7 @@ class NoteEditorView(NSView):
         else:
             self.date_picker.setDateValue_(NSDate.date())
         self._update_deadline_controls()
-        self.save_button.setTitle_("Save note")
+        self.save_button.setTitle_("Сохранить")
         self.setHidden_(False)
         self.needsLayout = True
 
@@ -375,7 +414,7 @@ class NoteEditorView(NSView):
     @objc.python_method
     def _update_deadline_controls(self) -> None:
         self.date_picker.setHidden_(not self.deadline_enabled)
-        self.deadline_button.setTitle_("Remove deadline" if self.deadline_enabled else "Add deadline")
+        self.deadline_button.setTitle_("Убрать срок" if self.deadline_enabled else "Добавить срок")
 
     def toggleDeadline_(self, _sender):
         self.deadline_enabled = not self.deadline_enabled
@@ -419,6 +458,11 @@ class NoteEditorView(NSView):
         self.save_button.setFrame_(NSMakeRect(width - 100, 12, 88, 30))
 
 
+class PopupContentView(NSView):
+    def isFlipped(self):
+        return True
+
+
 class PopupController(NSObject):
     def initWithService_(self, service: TaskService):
         self = objc.super(PopupController, self).init()
@@ -458,15 +502,21 @@ class PopupController(NSObject):
         panel.setHidesOnDeactivate_(False)
         panel.setLevel_(max(NSFloatingWindowLevel, NSStatusWindowLevel))
         panel.setDelegate_(self)
+        panel.setOpaque_(False)
+        panel.setBackgroundColor_(NSColor.windowBackgroundColor())
 
         root = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 560, MIN_PANEL_HEIGHT))
         root.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
+        root.setWantsLayer_(True)
+        root.layer().setCornerRadius_(LARGE_CORNER_RADIUS)
+        root.layer().setMasksToBounds_(True)
+        root.layer().setBackgroundColor_(NSColor.windowBackgroundColor().CGColor())
         panel.setContentView_(root)
 
         scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, FOOTER_HEIGHT, 560, 100))
         scroll.setHasVerticalScroller_(True)
         scroll.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
-        doc = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 560, 100))
+        doc = PopupContentView.alloc().initWithFrame_(NSMakeRect(0, 0, 560, 100))
         doc.setAutoresizingMask_(NSViewWidthSizable)
         scroll.setDocumentView_(doc)
         root.addSubview_(scroll)
@@ -476,7 +526,7 @@ class PopupController(NSObject):
         root.addSubview_(editor)
 
         add_button = NSButton.alloc().initWithFrame_(NSMakeRect(12, 10, 180, 32))
-        add_button.setTitle_("Add note")
+        add_button.setTitle_("Добавить заметку")
         add_button.setBezelStyle_(NSRoundedBezelStyle)
         add_button.setTarget_(self)
         add_button.setAction_("addNote:")
@@ -548,7 +598,9 @@ class PopupController(NSObject):
         scroll_height = max(80, bounds.size.height - FOOTER_HEIGHT - editor_height)
         self.scroll_view.setFrame_(NSMakeRect(0, FOOTER_HEIGHT + editor_height, bounds.size.width, scroll_height))
         self.editor_view.setFrame_(NSMakeRect(0, FOOTER_HEIGHT, bounds.size.width, editor_height))
-        self.add_button.setFrame_(NSMakeRect(12, 10, bounds.size.width - 24, 32))
+        self.add_button.setHidden_(editor_height > 0)
+        if editor_height == 0:
+            self.add_button.setFrame_(NSMakeRect(12, 10, bounds.size.width - 24, 32))
         self._layout_rows(bounds.size.width)
         self.position_panel()
 
