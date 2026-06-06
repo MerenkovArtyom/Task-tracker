@@ -104,6 +104,17 @@ def priority_from_title(title: str) -> NotePriority:
     return NotePriority(title.lower())
 
 
+def due_date_title(value: datetime | None) -> str:
+    if value is None:
+        return ""
+
+    today = datetime.now().date()
+    if value.date() == today:
+        return value.strftime("Сегодня %H:%M")
+
+    return value.strftime("%d.%m %H:%M")
+
+
 def measure_text_height(text: str, width: float, font) -> float:
     if not text.strip():
         return 0
@@ -149,6 +160,11 @@ class NoteRowView(NSView):
         self.title_field = NSTextField.labelWithString_("")
         self.title_field.setFont_(NSFont.systemFontOfSize_weight_(13, 0.55))
         self.addSubview_(self.title_field)
+
+        self.due_date_field = NSTextField.labelWithString_("")
+        self.due_date_field.setFont_(NSFont.systemFontOfSize_(12))
+        self.due_date_field.setTextColor_(NSColor.secondaryLabelColor())
+        self.addSubview_(self.due_date_field)
 
         self.priority_field = NSTextField.labelWithString_("")
         self.priority_field.setFont_(NSFont.systemFontOfSize_(12))
@@ -211,6 +227,9 @@ class NoteRowView(NSView):
         self.delete_button.setAction_("deleteNote:")
 
         self.priority_field.setStringValue_(priority_title(note.priority))
+        due_title = due_date_title(note.due_date)
+        self.due_date_field.setStringValue_(due_title)
+        self.due_date_field.setHidden_(not bool(due_title))
         self.content_field.setStringValue_(note.content or "")
         self.content_field.setHidden_(not expanded)
         self._update_title()
@@ -329,10 +348,34 @@ class NoteRowView(NSView):
         self.edit_button.setFrame_(NSMakeRect(action_x - ROW_ACTION_WIDTH - 4, top + 6, ROW_ACTION_WIDTH, 20))
 
         priority_width = 60
-        title_right_edge = self.delete_button.frame().origin.x if self.confirming_delete else self.edit_button.frame().origin.x
-        title_width = max(120, title_right_edge - x - priority_width - 8)
+        due_date_width = 92 if not self.due_date_field.isHidden() else 0
+        gap_after_title = 8 if due_date_width else 0
+        gap_after_due_date = 8 if due_date_width else 0
+
+        title_right_edge = (
+            self.delete_button.frame().origin.x
+            if self.confirming_delete
+            else self.edit_button.frame().origin.x
+        )
+
+        title_width = max(
+            80,
+            title_right_edge
+            - x
+            - due_date_width
+            - gap_after_title
+            - gap_after_due_date
+            - priority_width
+            - 8,
+        )
+
         self.title_field.setFrame_(NSMakeRect(x, top + 8, title_width, 18))
-        self.priority_field.setFrame_(NSMakeRect(x + title_width + 8, top + 8, priority_width, 18))
+
+        due_x = x + title_width + gap_after_title
+        self.due_date_field.setFrame_(NSMakeRect(due_x, top + 8, due_date_width, 18))
+
+        priority_x = due_x + due_date_width + gap_after_due_date
+        self.priority_field.setFrame_(NSMakeRect(priority_x, top + 8, priority_width, 18))
 
         if self.expanded:
             content_y = ROW_BOTTOM_PADDING
@@ -368,7 +411,7 @@ class NoteEditorView(NSView):
         self.priority_popup.addItemsWithTitles_(["High", "Medium", "Low"])
         self.addSubview_(self.priority_popup)
 
-        self.deadline_button = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 120, 28))
+        self.deadline_button = NSButton.alloc().initWithFrame_(NSMakeRect(0, 0, 170, 28))
         self.deadline_button.setBezelStyle_(NSRoundedBezelStyle)
         self.deadline_button.setTarget_(self)
         self.deadline_button.setAction_("toggleDeadline:")
@@ -447,11 +490,18 @@ class NoteEditorView(NSView):
     @objc.python_method
     def _update_deadline_controls(self) -> None:
         self.date_picker.setHidden_(not self.deadline_enabled)
-        self.deadline_button.setTitle_("Убрать срок" if self.deadline_enabled else "Добавить срок")
+        self.deadline_button.setTitle_("Убрать дедлайн" if self.deadline_enabled else "Добавить дедлайн")
+
+        self.needsLayout = True
+        self.setNeedsDisplay_(True)
 
     def toggleDeadline_(self, _sender):
         self.deadline_enabled = not self.deadline_enabled
         self._update_deadline_controls()
+
+        self.needsLayout = True
+        self.setNeedsDisplay_(True)
+
         if self.controller is not None:
             self.controller.layoutContentViews()
 
@@ -481,14 +531,20 @@ class NoteEditorView(NSView):
         self.separator.setFrame_(NSMakeRect(0, y, width, 1))
 
         field_width = width - 24
+
         self.title_field.setFrame_(NSMakeRect(12, y - 38, field_width, 28))
+
         self.priority_popup.setFrame_(NSMakeRect(12, y - 74, 120, 28))
-        self.deadline_button.setFrame_(NSMakeRect(142, y - 74, 140, 28))
-        if self.deadline_enabled:
-            self.date_picker.setFrame_(NSMakeRect(292, y - 74, field_width - 280, 28))
+        self.deadline_button.setFrame_(NSMakeRect(142, y - 74, 160, 28))
+
+        date_picker_x = 312
+        date_picker_width = max(120, width - date_picker_x - 12)
+        self.date_picker.setFrame_(NSMakeRect(date_picker_x, y - 74, date_picker_width, 28))
+
         self.text_scroll.setFrame_(NSMakeRect(12, 52, field_width, 100))
-        self.cancel_button.setFrame_(NSMakeRect(width - 196, 12, 88, 30))
-        self.save_button.setFrame_(NSMakeRect(width - 100, 12, 88, 30))
+
+        self.cancel_button.setFrame_(NSMakeRect(width - 216, 12, 88, 30))
+        self.save_button.setFrame_(NSMakeRect(width - 120, 12, 108, 30))
 
     def mouseDown_(self, event):
         if self.controller is not None:

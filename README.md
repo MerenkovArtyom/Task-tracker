@@ -105,7 +105,7 @@ uv run todo-tracker delete
 
 Сборка делается через `py2app`, который уже подключён как dev-зависимость.
 
-Собрать приложение:
+Собрать приложение из корня репозитория:
 
 ```bash
 cd app_bundle
@@ -118,12 +118,22 @@ cd app_bundle
 app_bundle/dist/TodoTracker.app
 ```
 
-Если нужен bundle в привычном корневом `dist/`:
+Полная команда сборки в одну строку из корня репозитория:
 
 ```bash
-mkdir -p dist
-rm -rf dist/TodoTracker.app
-cp -R app_bundle/dist/TodoTracker.app dist/TodoTracker.app
+cd app_bundle && ../.venv/bin/python setup.py py2app
+```
+
+Если нужен bundle в привычном корневом `dist/`, скопируйте его отдельной командой из корня репозитория:
+
+```bash
+rm -rf dist/TodoTracker.app && cp -R app_bundle/dist/TodoTracker.app dist/TodoTracker.app
+```
+
+Если вы уже находитесь внутри `app_bundle/`, используйте:
+
+```bash
+rm -rf ../dist/TodoTracker.app && cp -R dist/TodoTracker.app ../dist/TodoTracker.app
 ```
 
 Готовый app для запуска и добавления в автозапуск:
