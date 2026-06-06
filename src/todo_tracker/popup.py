@@ -45,7 +45,7 @@ from AppKit import (
     NSWindowStyleMaskFullSizeContentView,
     NSWindowStyleMaskTitled,
 )
-from Foundation import NSDate, NSObject
+from Foundation import NSCalendar, NSDate, NSDateFormatter, NSLocale, NSObject
 
 from todo_tracker.debugging import debug_log, debug_log_exception
 from todo_tracker.geometry import WINDOW_GAP, compute_popup_frame, status_item_screen_frame
@@ -94,6 +94,16 @@ def datetime_to_nsdate(value: datetime) -> NSDate:
 
 def nsdate_to_datetime(value: NSDate) -> datetime:
     return datetime.fromtimestamp(value.timeIntervalSince1970())
+
+
+def build_deadline_picker_formatter() -> NSDateFormatter:
+    formatter = NSDateFormatter.alloc().init()
+    formatter.setDateFormat_("dd.MM.yyyy HH:mm")
+    return formatter
+
+
+def build_deadline_picker_locale() -> NSLocale:
+    return NSLocale.alloc().initWithLocaleIdentifier_("ru_RU")
 
 
 def priority_title(priority: NotePriority) -> str:
@@ -419,6 +429,12 @@ class NoteEditorView(NSView):
 
         self.date_picker = NSDatePicker.alloc().initWithFrame_(NSMakeRect(0, 0, 220, 28))
         self.date_picker.setDatePickerElements_(NSDatePickerElementFlagYearMonthDay | NSDatePickerElementFlagHourMinute)
+        self.date_picker.setFormatter_(build_deadline_picker_formatter())
+        locale = build_deadline_picker_locale()
+        calendar = NSCalendar.currentCalendar().copy()
+        calendar.setLocale_(locale)
+        self.date_picker.setLocale_(locale)
+        self.date_picker.setCalendar_(calendar)
         self.date_picker.setDateValue_(NSDate.date())
         self.date_picker.setHidden_(True)
         self.addSubview_(self.date_picker)

@@ -8,6 +8,7 @@ from todo_tracker.geometry import POPUP_WIDTH, compute_popup_frame, status_item_
 from todo_tracker.menubar import resolve_status_icon_path
 from todo_tracker.models import Note, NotePriority, NoteStatus
 from todo_tracker.popup import (
+    NoteEditorView,
     NoteRowView,
     PopupContentView,
     PopupController,
@@ -91,6 +92,16 @@ def test_popup_content_view_uses_top_down_coordinate_system() -> None:
     content_view = PopupContentView.alloc().initWithFrame_(((0, 0), (100, 100)))
 
     assert content_view.isFlipped() is True
+
+
+def test_note_editor_uses_day_first_deadline_picker_format() -> None:
+    editor = NoteEditorView.alloc().initWithFrame_(((0, 0), (480, 246)))
+
+    formatter = editor.date_picker.formatter()
+
+    assert formatter is not None
+    assert formatter.dateFormat() == "dd.MM.yyyy HH:mm"
+    assert editor.date_picker.locale().localeIdentifier() == "ru_RU"
 
 
 def test_load_button_icon_returns_template_image_with_expected_size() -> None:
