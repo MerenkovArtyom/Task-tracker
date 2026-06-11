@@ -6,8 +6,10 @@ import sys
 import objc
 import rumps
 from AppKit import NSApplication
+from Foundation import NSUserNotificationCenter
 from rumps.rumps import AppHelper, NSApp, clicked, debug_mode, events, notifications, timer
 
+from todo_tracker.deadline_notifications import reschedule_deadline_notifications
 from todo_tracker.debugging import debug_log, debug_log_exception
 from todo_tracker.db import init_db
 from todo_tracker.geometry import POPUP_WIDTH, compute_popup_frame, status_item_screen_frame
@@ -58,6 +60,7 @@ class MenuBarTodoApp(rumps.App):
         session_factory = init_db(db_url) if db_url else init_db()
         self.service = TaskService(session_factory)
         self.popup_controller = PopupController.alloc().initWithService_(self.service)
+        self.popup_controller.set_on_notes_changed(self.refresh_deadline_notifications)
         self._status_target = StatusButtonTarget.alloc().initWithApp_(self)
         debug_log("MenuBarTodoApp initialized")
 
@@ -85,6 +88,7 @@ class MenuBarTodoApp(rumps.App):
         self._nsapp.nsstatusitem.setMenu_(None)
         status_button.setTarget_(self._status_target)
         status_button.setAction_("handleStatusItemClick:")
+        self.refresh_deadline_notifications()
         debug_log("Status item initialized and action wired")
 
         AppHelper.installMachInterrupt()
@@ -94,6 +98,12 @@ class MenuBarTodoApp(rumps.App):
     def handle_status_click(self) -> None:
         debug_log("MenuBarTodoApp.handle_status_click called")
         self.popup_controller.toggle_from_status_button(self._nsapp.nsstatusitem.button())
+
+    @objc.python_method
+    def refresh_deadline_notifications(self) -> None:
+        center = NSUserNotificationCenter.defaultUserNotificationCenter()
+        notes = self.service.list_notes_for_gui()
+        reschedule_deadline_notifications(center, notes)
 
 
 def create_status_app(db_url: str | None = None) -> MenuBarTodoApp:

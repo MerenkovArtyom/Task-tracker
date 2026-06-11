@@ -628,7 +628,17 @@ class PopupController(NSObject):
         self.row_views = []
         self.active_confirm_note_id = None
         self.last_error = None
+        self.on_notes_changed = None
         return self
+
+    @objc.python_method
+    def set_on_notes_changed(self, callback) -> None:
+        self.on_notes_changed = callback
+
+    @objc.python_method
+    def _notify_notes_changed(self) -> None:
+        if self.on_notes_changed is not None:
+            self.on_notes_changed()
 
     @objc.python_method
     def ensure_panel(self) -> None:
@@ -854,6 +864,7 @@ class PopupController(NSObject):
         self.handle_row_click(note_id)
         try:
             self.service.mark_done_by_id(note_id)
+            self._notify_notes_changed()
         except TaskNotFoundError as exc:
             self.last_error = str(exc)
         self.reload_notes()
@@ -877,6 +888,7 @@ class PopupController(NSObject):
         self.clear_delete_confirmation()
         try:
             self.service.delete_note_by_id(note_id)
+            self._notify_notes_changed()
         except TaskNotFoundError as exc:
             self.last_error = str(exc)
         self.expanded_note_ids.discard(note_id)
@@ -902,6 +914,7 @@ class PopupController(NSObject):
                 priority=priority,
                 due_date=due_date,
             )
+        self._notify_notes_changed()
         self.hideEditor()
         self.reload_notes()
         self.layoutContentViews()

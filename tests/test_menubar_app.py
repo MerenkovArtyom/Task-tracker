@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock
 from unittest.mock import patch
@@ -5,8 +6,9 @@ from unittest.mock import patch
 from AppKit import NSBitmapImageRep
 from Foundation import NSData
 from todo_tracker.geometry import POPUP_WIDTH, compute_popup_frame, status_item_screen_frame
-from todo_tracker.menubar import resolve_status_icon_path
+from todo_tracker.menubar import MenuBarTodoApp, resolve_status_icon_path
 from todo_tracker.models import Note, NotePriority, NoteStatus
+from todo_tracker.services import TaskNotFoundError
 from todo_tracker.popup import (
     NoteEditorView,
     NoteRowView,
@@ -230,3 +232,155 @@ def test_clicking_popup_background_clears_delete_confirmation() -> None:
 
     assert controller.active_confirm_note_id is None
     assert row_view.confirming_delete is False
+
+
+def test_submit_editor_create_triggers_notes_changed_callback() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    controller = PopupController.alloc().initWithService_(service)
+    callback = Mock()
+    controller.set_on_notes_changed(callback)
+    controller.hideEditor = Mock()
+    controller.reload_notes = Mock()
+    controller.layoutContentViews = Mock()
+
+    controller.submit_editor(0, "New", "Body", NotePriority.HIGH, datetime(2026, 6, 11, 18, 0))
+
+    service.create_note.assert_called_once()
+    callback.assert_called_once_with()
+
+
+def test_submit_editor_update_triggers_notes_changed_callback() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    controller = PopupController.alloc().initWithService_(service)
+    callback = Mock()
+    controller.set_on_notes_changed(callback)
+    controller.hideEditor = Mock()
+    controller.reload_notes = Mock()
+    controller.layoutContentViews = Mock()
+
+    controller.submit_editor(3, "Updated", "Body", NotePriority.LOW, None)
+
+    service.update_note_by_id.assert_called_once_with(
+        3,
+        title="Updated",
+        content="Body",
+        priority=NotePriority.LOW,
+        due_date=None,
+    )
+    callback.assert_called_once_with()
+
+
+def test_toggle_done_triggers_notes_changed_callback_on_success() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    controller = PopupController.alloc().initWithService_(service)
+    callback = Mock()
+    controller.set_on_notes_changed(callback)
+    row_view = build_row(build_note(1), controller)
+
+    controller.toggleDone_(row_view.done_button)
+
+    service.mark_done_by_id.assert_called_once_with(1)
+    callback.assert_called_once_with()
+
+
+def test_toggle_done_does_not_trigger_notes_changed_callback_on_not_found() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    service.mark_done_by_id.side_effect = TaskNotFoundError("missing")
+    controller = PopupController.alloc().initWithService_(service)
+    callback = Mock()
+    controller.set_on_notes_changed(callback)
+    row_view = build_row(build_note(1), controller)
+
+    controller.toggleDone_(row_view.done_button)
+
+    callback.assert_not_called()
+
+
+def test_delete_note_triggers_notes_changed_callback_on_second_click() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    controller = PopupController.alloc().initWithService_(service)
+    callback = Mock()
+    controller.set_on_notes_changed(callback)
+    row_view = build_row(build_note(1), controller)
+
+    controller.deleteNote_(row_view.delete_button)
+    controller.deleteNote_(row_view.delete_button)
+
+    service.delete_note_by_id.assert_called_once_with(1)
+    callback.assert_called_once_with()
+
+
+def test_delete_note_does_not_trigger_notes_changed_callback_on_not_found() -> None:
+    service = Mock()
+    service.list_notes_for_gui.return_value = []
+    service.delete_note_by_id.side_effect = TaskNotFoundError("missing")
+    controller = PopupController.alloc().initWithService_(service)
+    callback = Mock()
+    controller.set_on_notes_changed(callback)
+    row_view = build_row(build_note(1), controller)
+
+    controller.deleteNote_(row_view.delete_button)
+    controller.deleteNote_(row_view.delete_button)
+
+    callback.assert_not_called()
+
+
+def test_refresh_deadline_notifications_uses_default_notification_center() -> None:
+    app = object.__new__(MenuBarTodoApp)
+    app.service = Mock()
+    app.service.list_notes_for_gui.return_value = ["note"]
+    center = Mock()
+    center_class = Mock()
+    center_class.defaultUserNotificationCenter.return_value = center
+
+    with (
+        patch("todo_tracker.menubar.NSUserNotificationCenter", center_class),
+        patch("todo_tracker.menubar.reschedule_deadline_notifications") as reschedule,
+    ):
+        MenuBarTodoApp.refresh_deadline_notifications(app)
+
+    reschedule.assert_called_once_with(center, ["note"])
+
+
+def test_run_refreshes_deadline_notifications_after_status_item_init() -> None:
+    app = object.__new__(MenuBarTodoApp)
+    app.__dict__["_name"] = "Todo Tracker"
+    app.__dict__["_icon"] = None
+    app.__dict__["_menu"] = []
+    app.popup_controller = Mock()
+    app.service = Mock()
+    app.refresh_deadline_notifications = Mock()
+    app._status_target = Mock()
+
+    nsapplication = Mock()
+    nsapp = Mock()
+    status_button = Mock()
+    nsapp.nsstatusitem.button.return_value = status_button
+
+    nsapplication_class = Mock()
+    nsapplication_class.sharedApplication.return_value = nsapplication
+    nsapp_class = Mock()
+    nsapp_class.alloc.return_value.init.return_value = nsapp
+    clicked_module = Mock()
+    clicked_module.__dict__ = {"*buttons": []}
+    timer_module = Mock()
+    timer_module.__dict__ = {"*timers": []}
+
+    with (
+        patch("todo_tracker.menubar.NSApplication", nsapplication_class),
+        patch("todo_tracker.menubar.NSApp", nsapp_class),
+        patch("todo_tracker.menubar.notifications._init_nsapp"),
+        patch("todo_tracker.menubar.AppHelper.installMachInterrupt"),
+        patch("todo_tracker.menubar.AppHelper.runEventLoop"),
+        patch("todo_tracker.menubar.events.before_start.emit"),
+        patch("todo_tracker.menubar.clicked", clicked_module),
+        patch("todo_tracker.menubar.timer", timer_module),
+    ):
+        MenuBarTodoApp.run(app)
+
+    app.refresh_deadline_notifications.assert_called_once_with()

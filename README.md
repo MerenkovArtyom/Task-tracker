@@ -14,6 +14,7 @@
 - добавлять и редактировать заметки во встроенной нижней форме
 - выбирать приоритет `low / medium / high`
 - добавлять опциональный дедлайн через нативный `date picker`
+- отправлять системное macOS-уведомление в минуту дедлайна, пока menu bar app запущен
 
 ## Стек
 
@@ -148,7 +149,7 @@ dist/TodoTracker.app
 2. Перейдите в `General`
 3. Откройте `Login Items`
 4. Нажмите `+`
-5. Выберите [TodoTracker.app](/Users/artem/Programming/todo_tracker/dist/TodoTracker.app)
+5. Выберите [TodoTracker.app](~/todo_tracker/dist/TodoTracker.app)
 
 Если приложение уже было добавлено раньше, а вы пересобрали bundle, лучше удалить старую запись и добавить её заново.
 
